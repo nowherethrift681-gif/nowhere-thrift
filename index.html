@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NOWHERE THRIFT</title>
+
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#f5f4f0;color:#171717;font-family:Arial,sans-serif}
@@ -36,14 +37,20 @@ nav a{color:white;text-decoration:none}
 input,select{width:100%;padding:12px;margin:7px 0 14px;border:1px solid #ccc;background:white;font-size:15px}
 label{font-size:12px;font-weight:bold}
 .primary{width:100%;padding:14px;background:#171717;color:white;border:0;font-weight:bold;cursor:pointer}
+.primary:disabled{opacity:.5;cursor:wait}
 #cartItems{font-size:13px;line-height:1.8}
 .total{font-weight:bold;border-top:1px solid #ddd;padding-top:12px}
 #shareLink{display:none;background:#171717;color:white;padding:14px;text-align:center;text-decoration:none;margin-top:12px;font-size:13px}
 footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;letter-spacing:2px}
 .status{font-size:12px;color:#777;margin:12px 0}
-@media(min-width:650px){.grid{grid-template-columns:repeat(4,1fr)}.photo{height:230px}.hero{padding:70px 40px}}
+@media(min-width:650px){
+  .grid{grid-template-columns:repeat(4,1fr)}
+  .photo{height:230px}
+  .hero{padding:70px 40px}
+}
 </style>
 </head>
+
 <body>
 
 <header>
@@ -65,6 +72,7 @@ footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;
 <section class="section" id="shop">
   <h2>THE COLLECTION</h2>
   <p class="muted">Find your next favourite piece.</p>
+
   <div class="filters" id="filters">
     <button class="active" data-cat="ALL">ALL</button>
     <button data-cat="TEES">TEES</button>
@@ -72,17 +80,20 @@ footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;
     <button data-cat="PANTS">PANTS</button>
     <button data-cat="JACKETS">JACKETS</button>
   </div>
+
   <p class="status" id="loadStatus">Loading products...</p>
   <div class="grid" id="products"></div>
 </section>
 
 <section class="section" id="cart">
   <h2>YOUR CART</h2>
+
   <div class="panel">
     <div id="cartItems">Your cart is empty.</div>
     <p class="total" id="total">TOTAL: ៛0</p>
 
     <h3>CHECKOUT</h3>
+
     <form id="checkout">
       <label>Your name</label>
       <input id="customer" required placeholder="Enter your name">
@@ -105,23 +116,41 @@ footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;
       <label>Delivery address or pickup details</label>
       <input id="address" required placeholder="Enter details">
 
-      <button class="primary" type="submit">PREPARE MY ORDER</button>
+      <button class="primary" type="submit">
+        PREPARE MY ORDER
+      </button>
     </form>
 
-    <a id="shareLink" target="_blank" rel="noopener">SEND ORDER THROUGH TELEGRAM</a>
-    <p class="muted">Payment is confirmed manually by the shop. Your order is not confirmed until the seller responds.</p>
+    <a id="shareLink" target="_blank" rel="noopener">
+      SEND ORDER THROUGH TELEGRAM
+    </a>
+
+    <p class="muted">
+      Payment is confirmed manually by the shop.
+      Your order is not confirmed until the seller responds.
+    </p>
   </div>
 </section>
 
 <section class="section" id="about">
   <h2>ABOUT US</h2>
-  <p class="muted">NOWHERE THRIFT — giving pre-loved clothing a new story. Every piece has its own character.</p>
+  <p class="muted">
+    NOWHERE THRIFT — giving pre-loved clothing a new story.
+    Every piece has its own character.
+  </p>
 </section>
 
 <footer>NOWHERE THRIFT © 2026 · FIND YOUR OWN STYLE</footer>
 
 <script>
-const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSbTKmXH1Khm0n_4qrYjYO9Fv6NUv_jodFIzKfea57xlq9h4Dd6XDajUMex8qOOO3klW37w6Of38V44/pub?output=csv";
+
+// GOOGLE SHEETS PRODUCT CONNECTION
+const SHEET_URL =
+"https://docs.google.com/spreadsheets/d/e/2PACX-1vSbTKmXH1Khm0n_4qrYjYO9Fv6NUv_jodFIzKfea57xlq9h4Dd6XDajUMex8qOOO3klW37w6Of38V44/pub?output=csv";
+
+// GOOGLE APPS SCRIPT ORDER CONNECTION
+const ORDER_URL =
+"https://script.google.com/macros/s/AKfycbxSrqlafThImdkyHmKvpnzh6FGVpjZYfU-h6vXKdIKa2hDV1WDShC6hKebRT67c2R0e/exec";
 
 let products = [];
 let cart = [];
@@ -139,7 +168,7 @@ function escapeHTML(value) {
   })[char]);
 }
 
-// Read CSV, including values containing commas or quotation marks.
+// READ CSV DATA
 function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -171,9 +200,11 @@ function parseCSV(text) {
 
   row.push(cell.trim());
   if (row.some(value => value !== "")) rows.push(row);
+
   return rows;
 }
 
+// PRODUCT CATEGORIES
 function normalizeCategory(value) {
   const v = String(value).toLowerCase();
 
@@ -187,22 +218,32 @@ function normalizeCategory(value) {
 
 function isAvailable(value) {
   const v = String(value || "").trim().toLowerCase();
-  return v === "" || ["available","in stock","yes","true","1"].includes(v);
+
+  return v === "" ||
+    ["available","in stock","yes","true","1"].includes(v);
 }
 
+// LOAD PRODUCTS FROM GOOGLE SHEETS
 async function loadProducts() {
   const status = document.getElementById("loadStatus");
 
   try {
     const response = await fetch(SHEET_URL + "&_=" + Date.now());
-    if (!response.ok) throw new Error("Could not load the product sheet.");
+
+    if (!response.ok) {
+      throw new Error("Could not load product sheet.");
+    }
 
     const csv = await response.text();
     const rows = parseCSV(csv);
 
-    if (rows.length < 2) throw new Error("No products found in the sheet.");
+    if (rows.length < 2) {
+      throw new Error("No products found.");
+    }
 
-    const headers = rows[0].map(h => h.replace(/^\uFEFF/, "").trim().toLowerCase());
+    const headers = rows[0].map(h =>
+      h.replace(/^\uFEFF/, "").trim().toLowerCase()
+    );
 
     const column = name => headers.indexOf(name.toLowerCase());
 
@@ -216,7 +257,7 @@ async function loadProducts() {
     const stockCol = column("Stock Status");
 
     if ([idCol,nameCol,catCol,priceCol,sizeCol,conditionCol,photoCol,stockCol].some(i => i < 0)) {
-      throw new Error("Please check the Google Sheet column headings.");
+      throw new Error("Check Google Sheet headings.");
     }
 
     products = rows.slice(1).map(row => {
@@ -233,51 +274,73 @@ async function loadProducts() {
         photo: /^https?:\/\//i.test(photo) ? photo : "",
         available: isAvailable(row[stockCol])
       };
-    }).filter(p => p.id && p.name && Number.isFinite(p.price) && p.price > 0);
+    }).filter(p =>
+      p.id && p.name &&
+      Number.isFinite(p.price) &&
+      p.price > 0
+    );
 
     status.textContent = products.length
       ? products.length + " product(s) loaded from our collection."
-      : "No valid products found. Please check your sheet.";
+      : "No valid products found.";
 
     renderProducts();
     renderCart();
 
   } catch (error) {
-    status.textContent = "Could not load products. Please try again later.";
+    status.textContent =
+      "Could not load products. Please try again later.";
+
     document.getElementById("products").innerHTML =
       '<p class="muted">Our collection is temporarily unavailable.</p>';
+
     console.error(error);
   }
 }
 
+// DISPLAY PRODUCTS
 function renderProducts() {
   const list = products.filter(p =>
-    (category === "ALL" || p.cat === category)
+    category === "ALL" || p.cat === category
   );
 
-  document.getElementById("products").innerHTML = list.map(p => {
-    const inCart = cart.some(x => x.id === p.id);
-    const photo = p.photo
-      ? '<img src="' + escapeHTML(p.photo) + '" alt="' + escapeHTML(p.name) + '" loading="lazy">'
-      : "👕";
+  document.getElementById("products").innerHTML =
+    list.map(p => {
+      const inCart = cart.some(x => x.id === p.id);
 
-    return `
-      <article class="product">
-        <div class="photo">${photo}</div>
-        <div class="info">
-          <div class="muted">${escapeHTML(p.cat)} · SIZE ${escapeHTML(p.size)}</div>
-          <h3>${escapeHTML(p.name)}</h3>
-          <div class="muted">${escapeHTML(p.condition)}</div>
-          <div class="price">${money(p.price)}</div>
-          <button class="add" data-id="${escapeHTML(p.id)}"
-            ${(!p.available || inCart) ? "disabled" : ""}>
-            ${!p.available ? "SOLD OUT" : inCart ? "ADDED" : "ADD TO CART"}
-          </button>
-        </div>
-      </article>`;
-  }).join("");
+      const photo = p.photo
+        ? '<img src="' + escapeHTML(p.photo) +
+          '" alt="' + escapeHTML(p.name) +
+          '" loading="lazy">'
+        : "👕";
+
+      return `
+        <article class="product">
+          <div class="photo">${photo}</div>
+
+          <div class="info">
+            <div class="muted">
+              ${escapeHTML(p.cat)} · SIZE ${escapeHTML(p.size)}
+            </div>
+
+            <h3>${escapeHTML(p.name)}</h3>
+
+            <div class="muted">
+              ${escapeHTML(p.condition)}
+            </div>
+
+            <div class="price">${money(p.price)}</div>
+
+            <button class="add" data-id="${escapeHTML(p.id)}"
+              ${(!p.available || inCart) ? "disabled" : ""}>
+              ${!p.available ? "SOLD OUT" : inCart ? "ADDED" : "ADD TO CART"}
+            </button>
+          </div>
+        </article>`;
+    }).join("");
 }
 
+// DISPLAY CART
 function renderCart() {
   const area = document.getElementById("cartItems");
 
@@ -289,13 +352,16 @@ function renderCart() {
     : "Your cart is empty.";
 
   document.getElementById("total").textContent =
-    "TOTAL: " + money(cart.reduce((sum,p) => sum + p.price, 0));
+    "TOTAL: " +
+    money(cart.reduce((sum,p) => sum + p.price, 0));
 }
 
+// CATEGORY FILTERS
 document.getElementById("filters").addEventListener("click", e => {
   if (!e.target.dataset.cat) return;
 
   category = e.target.dataset.cat;
+
   document.querySelectorAll(".filters button").forEach(b =>
     b.classList.toggle("active", b === e.target)
   );
@@ -303,6 +369,7 @@ document.getElementById("filters").addEventListener("click", e => {
   renderProducts();
 });
 
+// ADD TO CART
 document.getElementById("products").addEventListener("click", e => {
   const button = e.target.closest("button[data-id]");
   if (!button) return;
@@ -316,16 +383,19 @@ document.getElementById("products").addEventListener("click", e => {
   }
 });
 
+// REMOVE FROM CART
 document.getElementById("cartItems").addEventListener("click", e => {
   const button = e.target.closest("button[data-remove]");
   if (!button) return;
 
   cart = cart.filter(p => p.id !== button.dataset.remove);
+
   renderProducts();
   renderCart();
 });
 
-document.getElementById("checkout").addEventListener("submit", e => {
+// CHECKOUT AND SAVE ORDER
+document.getElementById("checkout").addEventListener("submit", async e => {
   e.preventDefault();
 
   if (!cart.length) {
@@ -333,34 +403,97 @@ document.getElementById("checkout").addEventListener("submit", e => {
     return;
   }
 
-  const lines = cart.map(p =>
-    p.name + " (" + p.size + ") " + money(p.price)
-  );
+  const button = e.target.querySelector('button[type="submit"]');
+
+  button.disabled = true;
+  button.textContent = "SENDING ORDER...";
+
+  const customerName =
+    document.getElementById("customer").value.trim();
+
+  const phone =
+    document.getElementById("phone").value.trim();
+
+  const fulfilment =
+    document.getElementById("fulfilment").value;
+
+  const payment =
+    document.getElementById("payment").value;
+
+  const address =
+    document.getElementById("address").value.trim();
 
   const total = cart.reduce((sum,p) => sum + p.price, 0);
 
+  const productsText = cart.map(p =>
+    p.id + " - " + p.name +
+    " (" + p.size + ") - " + money(p.price)
+  ).join("; ");
+
+  const orderData = {
+    customerName: customerName,
+    telegram: "",
+    phone: phone,
+    products: productsText,
+    total: total,
+    deliveryMethod: fulfilment,
+    address: address,
+    paymentMethod: payment
+  };
+
   const message = [
     "NEW ORDER - NOWHERE THRIFT",
-    ...lines,
+    productsText,
     "TOTAL: " + money(total),
-    "Name: " + document.getElementById("customer").value,
-    "Phone: " + document.getElementById("phone").value,
-    "Fulfilment: " + document.getElementById("fulfilment").value,
-    "Payment: " + document.getElementById("payment").value,
-    "Address/details: " + document.getElementById("address").value
+    "Name: " + customerName,
+    "Phone: " + phone,
+    "Fulfilment: " + fulfilment,
+    "Payment: " + payment,
+    "Address/details: " + address
   ].join("\n");
 
-  const link = document.getElementById("shareLink");
-  link.href = "https://t.me/share/url?url=" +
-    encodeURIComponent("NOWHERE THRIFT") +
-    "&text=" + encodeURIComponent(message);
+  try {
+    await fetch(ORDER_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(orderData)
+    });
 
-  link.style.display = "block";
-  link.textContent = "SEND ORDER THROUGH TELEGRAM";
-  link.scrollIntoView({behavior:"smooth",block:"center"});
+    const link = document.getElementById("shareLink");
+
+    link.href =
+      "https://t.me/share/url?url=" +
+      encodeURIComponent("NOWHERE THRIFT") +
+      "&text=" + encodeURIComponent(message);
+
+    link.style.display = "block";
+    link.textContent = "SEND ORDER THROUGH TELEGRAM";
+
+    alert(
+      "Order submission sent. Please tap the Telegram button to send your order. Check with the shop before assuming your order is confirmed."
+    );
+
+    link.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+  } catch (error) {
+    alert("Could not send the order. Please try again.");
+    console.error(error);
+
+  } finally {
+    button.disabled = false;
+    button.textContent = "PREPARE MY ORDER";
+  }
 });
 
+// START WEBSITE
 loadProducts();
+
 </script>
 </body>
 </html>
