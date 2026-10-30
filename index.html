@@ -24,13 +24,14 @@ nav a{color:white;text-decoration:none}
 .filters button.active,.add{background:#171717;color:white}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .product{background:white;padding-bottom:12px}
-.photo{height:155px;background:#dedbd5;display:flex;align-items:center;justify-content:center;font-size:42px}
+.photo{height:155px;background:#dedbd5;display:flex;align-items:center;justify-content:center;font-size:42px;overflow:hidden}
+.photo img{width:100%;height:100%;object-fit:cover}
 .info{padding:10px}
 .info h3{font-size:13px;margin:3px 0 7px}
 .muted{font-size:11px;color:#777}
 .price{font-weight:bold;margin:9px 0}
 .add{width:100%;font-size:11px}
-.add:disabled{opacity:.4}
+.add:disabled{opacity:.4;cursor:not-allowed}
 .panel{background:white;padding:17px;margin-top:18px}
 input,select{width:100%;padding:12px;margin:7px 0 14px;border:1px solid #ccc;background:white;font-size:15px}
 label{font-size:12px;font-weight:bold}
@@ -39,6 +40,7 @@ label{font-size:12px;font-weight:bold}
 .total{font-weight:bold;border-top:1px solid #ddd;padding-top:12px}
 #shareLink{display:none;background:#171717;color:white;padding:14px;text-align:center;text-decoration:none;margin-top:12px;font-size:13px}
 footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;letter-spacing:2px}
+.status{font-size:12px;color:#777;margin:12px 0}
 @media(min-width:650px){.grid{grid-template-columns:repeat(4,1fr)}.photo{height:230px}.hero{padding:70px 40px}}
 </style>
 </head>
@@ -70,6 +72,7 @@ footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;
     <button data-cat="PANTS">PANTS</button>
     <button data-cat="JACKETS">JACKETS</button>
   </div>
+  <p class="status" id="loadStatus">Loading products...</p>
   <div class="grid" id="products"></div>
 </section>
 
@@ -118,98 +121,246 @@ footer{background:#111;color:#aaa;padding:25px;text-align:center;font-size:11px;
 <footer>NOWHERE THRIFT © 2026 · FIND YOUR OWN STYLE</footer>
 
 <script>
-const products = [
- {id:1,name:"Vintage Graphic Tee",cat:"TEES",price:25000,size:"L",icon:"👕"},
- {id:2,name:"Classic Street Hoodie",cat:"HOODIES",price:45000,size:"M",icon:"🧥"},
- {id:3,name:"Relaxed Denim Pants",cat:"PANTS",price:35000,size:"30",icon:"👖"},
- {id:4,name:"Vintage Utility Jacket",cat:"JACKETS",price:55000,size:"L",icon:"🧥"}
-];
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSbTKmXH1Khm0n_4qrYjYO9Fv6NUv_jodFIzKfea57xlq9h4Dd6XDajUMex8qOOO3klW37w6Of38V44/pub?output=csv";
 
+let products = [];
 let cart = [];
 let category = "ALL";
 
-const money = n => "៛" + n.toLocaleString("en-US");
+const money = n => "៛" + Number(n).toLocaleString("en-US");
 
-function renderProducts(){
- const list = products.filter(p => category==="ALL" || p.cat===category);
- document.getElementById("products").innerHTML = list.map(p => `
- <article class="product">
-  <div class="photo">${p.icon}</div>
-  <div class="info">
-   <div class="muted">${p.cat} · SIZE ${p.size}</div>
-   <h3>${p.name}</h3>
-   <div class="price">${money(p.price)}</div>
-   <button class="add" data-id="${p.id}" ${cart.some(x=>x.id===p.id)?"disabled":""}>
-    ${cart.some(x=>x.id===p.id)?"ADDED":"ADD TO CART"}
-   </button>
-  </div>
- </article>`).join("");
+function escapeHTML(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
+  })[char]);
 }
 
-function renderCart(){
- const area = document.getElementById("cartItems");
- area.innerHTML = cart.length
-  ? cart.map(p=>`${p.name} — ${money(p.price)} <button data-remove="${p.id}">Remove</button>`).join("<br>")
-  : "Your cart is empty.";
- document.getElementById("total").textContent =
-  "TOTAL: " + money(cart.reduce((sum,p)=>sum+p.price,0));
+// Read CSV, including values containing commas or quotation marks.
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      cell += '"';
+      i++;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(cell.trim());
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") i++;
+      row.push(cell.trim());
+      if (row.some(value => value !== "")) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell.trim());
+  if (row.some(value => value !== "")) rows.push(row);
+  return rows;
 }
 
-document.getElementById("filters").addEventListener("click",e=>{
- if(!e.target.dataset.cat)return;
- category=e.target.dataset.cat;
- document.querySelectorAll(".filters button").forEach(b=>b.classList.toggle("active",b===e.target));
- renderProducts();
+function normalizeCategory(value) {
+  const v = String(value).toLowerCase();
+
+  if (v.includes("tee") || v.includes("shirt")) return "TEES";
+  if (v.includes("hoodie")) return "HOODIES";
+  if (v.includes("pant") || v.includes("trouser")) return "PANTS";
+  if (v.includes("jacket")) return "JACKETS";
+
+  return String(value).toUpperCase();
+}
+
+function isAvailable(value) {
+  const v = String(value || "").trim().toLowerCase();
+  return v === "" || ["available","in stock","yes","true","1"].includes(v);
+}
+
+async function loadProducts() {
+  const status = document.getElementById("loadStatus");
+
+  try {
+    const response = await fetch(SHEET_URL + "&_=" + Date.now());
+    if (!response.ok) throw new Error("Could not load the product sheet.");
+
+    const csv = await response.text();
+    const rows = parseCSV(csv);
+
+    if (rows.length < 2) throw new Error("No products found in the sheet.");
+
+    const headers = rows[0].map(h => h.replace(/^\uFEFF/, "").trim().toLowerCase());
+
+    const column = name => headers.indexOf(name.toLowerCase());
+
+    const idCol = column("Product ID");
+    const nameCol = column("Product Name");
+    const catCol = column("Category");
+    const priceCol = column("Price (KHR)");
+    const sizeCol = column("Size");
+    const conditionCol = column("Condition");
+    const photoCol = column("Photo URL");
+    const stockCol = column("Stock Status");
+
+    if ([idCol,nameCol,catCol,priceCol,sizeCol,conditionCol,photoCol,stockCol].some(i => i < 0)) {
+      throw new Error("Please check the Google Sheet column headings.");
+    }
+
+    products = rows.slice(1).map(row => {
+      const priceText = (row[priceCol] || "").replace(/[^\d.-]/g, "");
+      const photo = (row[photoCol] || "").trim();
+
+      return {
+        id: (row[idCol] || "").trim(),
+        name: (row[nameCol] || "").trim(),
+        cat: normalizeCategory(row[catCol] || "OTHER"),
+        price: Number(priceText),
+        size: (row[sizeCol] || "").trim(),
+        condition: (row[conditionCol] || "").trim(),
+        photo: /^https?:\/\//i.test(photo) ? photo : "",
+        available: isAvailable(row[stockCol])
+      };
+    }).filter(p => p.id && p.name && Number.isFinite(p.price) && p.price > 0);
+
+    status.textContent = products.length
+      ? products.length + " product(s) loaded from our collection."
+      : "No valid products found. Please check your sheet.";
+
+    renderProducts();
+    renderCart();
+
+  } catch (error) {
+    status.textContent = "Could not load products. Please try again later.";
+    document.getElementById("products").innerHTML =
+      '<p class="muted">Our collection is temporarily unavailable.</p>';
+    console.error(error);
+  }
+}
+
+function renderProducts() {
+  const list = products.filter(p =>
+    (category === "ALL" || p.cat === category)
+  );
+
+  document.getElementById("products").innerHTML = list.map(p => {
+    const inCart = cart.some(x => x.id === p.id);
+    const photo = p.photo
+      ? '<img src="' + escapeHTML(p.photo) + '" alt="' + escapeHTML(p.name) + '" loading="lazy">'
+      : "👕";
+
+    return `
+      <article class="product">
+        <div class="photo">${photo}</div>
+        <div class="info">
+          <div class="muted">${escapeHTML(p.cat)} · SIZE ${escapeHTML(p.size)}</div>
+          <h3>${escapeHTML(p.name)}</h3>
+          <div class="muted">${escapeHTML(p.condition)}</div>
+          <div class="price">${money(p.price)}</div>
+          <button class="add" data-id="${escapeHTML(p.id)}"
+            ${(!p.available || inCart) ? "disabled" : ""}>
+            ${!p.available ? "SOLD OUT" : inCart ? "ADDED" : "ADD TO CART"}
+          </button>
+        </div>
+      </article>`;
+  }).join("");
+}
+
+function renderCart() {
+  const area = document.getElementById("cartItems");
+
+  area.innerHTML = cart.length
+    ? cart.map(p =>
+        `${escapeHTML(p.name)} — ${money(p.price)}
+        <button data-remove="${escapeHTML(p.id)}">Remove</button>`
+      ).join("<br>")
+    : "Your cart is empty.";
+
+  document.getElementById("total").textContent =
+    "TOTAL: " + money(cart.reduce((sum,p) => sum + p.price, 0));
+}
+
+document.getElementById("filters").addEventListener("click", e => {
+  if (!e.target.dataset.cat) return;
+
+  category = e.target.dataset.cat;
+  document.querySelectorAll(".filters button").forEach(b =>
+    b.classList.toggle("active", b === e.target)
+  );
+
+  renderProducts();
 });
 
-document.getElementById("products").addEventListener("click",e=>{
- const id=Number(e.target.dataset.id);
- if(!id)return;
- const p=products.find(x=>x.id===id);
- if(p && !cart.some(x=>x.id===id)){
-  cart.push(p);
+document.getElementById("products").addEventListener("click", e => {
+  const button = e.target.closest("button[data-id]");
+  if (!button) return;
+
+  const p = products.find(x => x.id === button.dataset.id);
+
+  if (p && p.available && !cart.some(x => x.id === p.id)) {
+    cart.push(p);
+    renderProducts();
+    renderCart();
+  }
+});
+
+document.getElementById("cartItems").addEventListener("click", e => {
+  const button = e.target.closest("button[data-remove]");
+  if (!button) return;
+
+  cart = cart.filter(p => p.id !== button.dataset.remove);
   renderProducts();
   renderCart();
- }
 });
 
-document.getElementById("cartItems").addEventListener("click",e=>{
- const id=Number(e.target.dataset.remove);
- if(!id)return;
- cart=cart.filter(p=>p.id!==id);
- renderProducts();
- renderCart();
+document.getElementById("checkout").addEventListener("submit", e => {
+  e.preventDefault();
+
+  if (!cart.length) {
+    alert("Please add a product first.");
+    return;
+  }
+
+  const lines = cart.map(p =>
+    p.name + " (" + p.size + ") " + money(p.price)
+  );
+
+  const total = cart.reduce((sum,p) => sum + p.price, 0);
+
+  const message = [
+    "NEW ORDER - NOWHERE THRIFT",
+    ...lines,
+    "TOTAL: " + money(total),
+    "Name: " + document.getElementById("customer").value,
+    "Phone: " + document.getElementById("phone").value,
+    "Fulfilment: " + document.getElementById("fulfilment").value,
+    "Payment: " + document.getElementById("payment").value,
+    "Address/details: " + document.getElementById("address").value
+  ].join("\n");
+
+  const link = document.getElementById("shareLink");
+  link.href = "https://t.me/share/url?url=" +
+    encodeURIComponent("NOWHERE THRIFT") +
+    "&text=" + encodeURIComponent(message);
+
+  link.style.display = "block";
+  link.textContent = "SEND ORDER THROUGH TELEGRAM";
+  link.scrollIntoView({behavior:"smooth",block:"center"});
 });
 
-document.getElementById("checkout").addEventListener("submit",e=>{
- e.preventDefault();
- if(!cart.length){
-  alert("Please add a product first.");
-  return;
- }
-
- const lines=cart.map(p=>p.name+" ("+p.size+") "+money(p.price));
- const total=cart.reduce((sum,p)=>sum+p.price,0);
- const message=[
-  "NEW ORDER - NOWHERE THRIFT",
-  ...lines,
-  "TOTAL: "+money(total),
-  "Name: "+document.getElementById("customer").value,
-  "Phone: "+document.getElementById("phone").value,
-  "Fulfilment: "+document.getElementById("fulfilment").value,
-  "Payment: "+document.getElementById("payment").value,
-  "Address/details: "+document.getElementById("address").value
- ].join("\n");
-
- const link=document.getElementById("shareLink");
- link.href="https://t.me/share/url?url="+encodeURIComponent("NOWHERE THRIFT")+"&text="+encodeURIComponent(message);
- link.style.display="block";
- link.textContent="SEND ORDER THROUGH TELEGRAM";
- link.scrollIntoView({behavior:"smooth",block:"center"});
-});
-
-renderProducts();
-renderCart();
+loadProducts();
 </script>
 </body>
 </html>
